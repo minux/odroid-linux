@@ -35,18 +35,17 @@
 #include <plat/cpu.h>
 #include <plat/devs.h>
 #include <plat/gpio-cfg.h>
-#include <plat/iic.h>
+#include <linux/platform_data/i2c-s3c2410.h>
 #include <plat/keypad.h>
 #include <plat/mfc.h>
 #include <plat/regs-serial.h>
 #include <plat/sdhci.h>
-#include <plat/ehci.h>
+#include <linux/platform_data/usb-ehci-s5p.h>
 #include <plat/fb.h>
 #include <plat/regs-fb-v4.h>
 #include <plat/hdmi.h>
 #include <video/platform_lcd.h>
-
-#include <mach/ohci.h>
+#include <linux/platform_data/usb-exynos.h>
 #include <mach/map.h>
 #include <mach/regs-pmu.h>
 #include <mach/dwmci.h>
@@ -1288,6 +1287,7 @@ static void __init hkdk4412_machine_init(void)
 MACHINE_START(ODROIDX, "ODROID-X")
 	/* Maintainer: Dongjin Kim <dongjin.kim@agreeyamobiity.net> */
 	.atag_offset	= 0x100,
+	.smp		= smp_ops(exynos_smp_ops),
 	.init_irq	= exynos4_init_irq,
 	.map_io		= hkdk4412_map_io,
 	.handle_irq	= gic_handle_irq,

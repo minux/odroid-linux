@@ -16,6 +16,7 @@
 #include <linux/pm.h>
 #include <linux/i2c.h>
 #include <linux/platform_device.h>
+#include <linux/workqueue.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
@@ -24,6 +25,8 @@
 #include <sound/tlv.h>
 #include <linux/slab.h>
 #include <asm/div64.h>
+#include <sound/jack.h>
+
 #include "max98090.h"
 
 static const u8 max98090_reg_def[M98090_REG_CNT] = {

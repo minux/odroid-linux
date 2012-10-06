@@ -32,14 +32,9 @@
 
 #include <plat/cpu.h>
 
+#include "common.h"
+
 extern void exynos4_secondary_startup(void);
-
-/*
- * control for which core is the next to come out of the secondary
- * boot "holding pen"
- */
-
-volatile int __cpuinitdata pen_release = -1;
 
 /*
  * Write pen_release in a way that is guaranteed to be visible to all
@@ -64,7 +59,7 @@ static void __iomem *scu_base_addr(void)
 
 static DEFINE_SPINLOCK(boot_lock);
 
-void __cpuinit platform_secondary_init(unsigned int cpu)
+static void __cpuinit exynos_secondary_init(unsigned int cpu)
 {
 	/*
 	 * if any interrupts are already enabled for the primary
@@ -116,7 +111,7 @@ static int exynos_power_up_cpu(unsigned int cpu)
 	return 0;
 }
 
-int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
+static int __cpuinit exynos_boot_secondary(unsigned int cpu, struct task_struct *idle)
 {
 	unsigned long timeout;
 	void __iomem *boot_base;
@@ -193,7 +188,7 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
  * which may be present or become present in the system.
  */
 
-void __init smp_init_cpus(void)
+static void __init exynos_smp_init_cpus(void)
 {
 	void __iomem *scu_base = scu_base_addr();
 	unsigned int i, ncores;
@@ -216,7 +211,7 @@ void __init smp_init_cpus(void)
 	set_smp_cross_call(gic_raise_softirq);
 }
 
-void __init platform_smp_prepare_cpus(unsigned int max_cpus)
+static void __init exynos_smp_prepare_cpus(unsigned int max_cpus)
 {
 	int i;
 
@@ -230,3 +225,13 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 	if (!soc_is_exynos5250())
 		scu_enable(scu_base_addr());
 }
+
+struct smp_operations exynos_smp_ops __initdata = {
+	.smp_init_cpus		= exynos_smp_init_cpus,
+	.smp_prepare_cpus	= exynos_smp_prepare_cpus,
+	.smp_secondary_init	= exynos_secondary_init,
+	.smp_boot_secondary	= exynos_boot_secondary,
+#ifdef CONFIG_HOTPLUG_CPU
+	.cpu_die		= exynos_cpu_die,
+#endif
+};
