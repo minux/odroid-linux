@@ -42,7 +42,7 @@
 #include <plat/sdhci.h>
 #include <linux/platform_data/usb-ehci-s5p.h>
 #include <plat/fb.h>
-#include <plat/regs-fb-v4.h>
+#include <plat/regs-fb.h>
 #include <plat/hdmi.h>
 #include <video/platform_lcd.h>
 #include <linux/platform_data/usb-exynos.h>

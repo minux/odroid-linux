@@ -47,7 +47,7 @@ if GPIOLIB
 
 config OF_GPIO
 	def_bool y
-	depends on OF && !SPARC
+	depends on OF
 
 config DEBUG_GPIO
 	bool "Debug GPIO calls"
@@ -149,6 +149,12 @@ config GPIO_MSM_V2
 	  Say yes here to support the GPIO interface on ARM v7 based
 	  Qualcomm MSM chips.  Most of the pins on the MSM can be
 	  selected for GPIO, and are controlled by this driver.
+
+config GPIO_MVEBU
+	def_bool y
+	depends on ARCH_MVEBU
+	select GPIO_GENERIC
+	select GENERIC_IRQ_CHIP
 
 config GPIO_MXC
 	def_bool y

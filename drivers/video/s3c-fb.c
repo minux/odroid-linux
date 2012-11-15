@@ -24,11 +24,9 @@
 #include <linux/uaccess.h>
 #include <linux/interrupt.h>
 #include <linux/pm_runtime.h>
-#include <linux/of.h>
-#include <linux/of_gpio.h>
 
+#include <video/samsung_fimd.h>
 #include <mach/map.h>
-#include <plat/regs-fb-v4.h>
 #include <plat/fb.h>
 
 /* This driver will export a number of framebuffer interfaces depending
@@ -68,8 +66,6 @@ struct s3c_fb;
 #define VIDOSD_B(win, variant) (OSD_BASE(win, variant) + 0x04)
 #define VIDOSD_C(win, variant) (OSD_BASE(win, variant) + 0x08)
 #define VIDOSD_D(win, variant) (OSD_BASE(win, variant) + 0x0C)
-
-#define S3CFB_WIN_SET_PIXEL_ALPHA	_IOW('F', 204, __u32)
 
 /**
  * struct s3c_fb_variant - fb variant information
@@ -224,7 +220,6 @@ struct s3c_fb {
 	int			 irq_no;
 	unsigned long		 irq_flags;
 	struct s3c_fb_vsync	 vsync_info;
-	int			 *gpios;
 };
 
 /**
@@ -1018,33 +1013,6 @@ static int s3c_fb_wait_for_vsync(struct s3c_fb *sfb, u32 crtc)
 	return 0;
 }
 
-int s3cfb_set_alpha_blending(struct s3c_fb *ctrl, int id)
-{
-	u32 avalue = 0, cfg;
-
-	if (id == 0) {
-		dev_err(ctrl->dev, "[fb%d] does not support alpha blending\n",
-				id);
-		return -EINVAL;
-	}
-
-	cfg = readl(ctrl->regs + S3C_WINCON(id));
-	cfg |= (1 << 0);
-	writel(cfg, ctrl->regs + S3C_WINCON(id));
-	cfg = readl(ctrl->regs + S3C_WINSHMAP);
-	cfg |= S3C_WINSHMAP_CH_ENABLE(id);
-	writel(cfg, ctrl->regs + S3C_WINSHMAP);
-	cfg = readl(ctrl->regs + S3C_WINCON(id));
-	cfg &= ~(S3C_WINCON_BLD_MASK | S3C_WINCON_ALPHA_SEL_MASK);
-
-	cfg |= (S3C_WINCON_BLD_PIXEL | S3C_WINCON_ALPHA1_SEL);
-	writel(cfg, ctrl->regs + S3C_WINCON(id));
-	writel(avalue, ctrl->regs + S3C_VIDOSD_C(id));
-
-	cfg = readl(ctrl->regs + S3C_WINCON(id));
-	return 0;
-}
-
 static int s3c_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			unsigned long arg)
 {
@@ -1059,10 +1027,8 @@ static int s3c_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			ret = -EFAULT;
 			break;
 		}
+
 		ret = s3c_fb_wait_for_vsync(sfb, crtc);
-		break;
-	case S3CFB_WIN_SET_PIXEL_ALPHA:
-		ret = s3cfb_set_alpha_blending(sfb, win->index);
 		break;
 	default:
 		ret = -ENOTTY;
@@ -1071,30 +1037,8 @@ static int s3c_fb_ioctl(struct fb_info *info, unsigned int cmd,
 	return ret;
 }
 
-int s3c_fb_open(struct fb_info *info, int user)
-{
-	s3c_fb_set_par(info);
-	return 0;
-}
-
-int s3c_fb_release(struct fb_info *info, int user)
-{
-	struct s3c_fb_win *win = info->par;
-	struct s3c_fb *sfb = win->parent;
-	void __iomem *regs = sfb->regs;
-	int win_no = win->index;
-
-	if (win_no != 2) {
-		printk(KERN_DEBUG"Releasing window %d\n", win_no);
-		writel(0, regs + WINCON(win_no));
-	}
-	return 0;
-}
-
 static struct fb_ops s3c_fb_ops = {
 	.owner		= THIS_MODULE,
-	.fb_open	= s3c_fb_open,
-	.fb_release     = s3c_fb_release,
 	.fb_check_var	= s3c_fb_check_var,
 	.fb_set_par	= s3c_fb_set_par,
 	.fb_blank	= s3c_fb_blank,
@@ -1324,6 +1268,8 @@ static int __devinit s3c_fb_probe_win(struct s3c_fb *sfb, unsigned int win_no,
 	else
 		dev_err(sfb->dev, "failed to allocate fb cmap\n");
 
+	s3c_fb_set_par(fbinfo);
+
 	dev_dbg(sfb->dev, "about to register framebuffer\n");
 
 	/* run the check_var and set_par on our configuration. */
@@ -1379,17 +1325,10 @@ static void s3c_fb_set_rgb_timing(struct s3c_fb *sfb)
 	       VIDTCON1_HSPW(vmode->hsync_len - 1);
 	writel(data, regs + sfb->variant.vidtcon + 4);
 
-#if defined(CONFIG_LCD_LP101WH1)
-	data = VIDTCON2_LINEVAL(vmode->yres - 1) |
-	       VIDTCON2_HOZVAL(vmode->xres - 1 + 6) |
-	       VIDTCON2_LINEVAL_E(vmode->yres - 1) |
-	       VIDTCON2_HOZVAL_E(vmode->xres - 1);
-#else
 	data = VIDTCON2_LINEVAL(vmode->yres - 1) |
 	       VIDTCON2_HOZVAL(vmode->xres - 1) |
 	       VIDTCON2_LINEVAL_E(vmode->yres - 1) |
 	       VIDTCON2_HOZVAL_E(vmode->xres - 1);
-#endif
 	writel(data, regs + sfb->variant.vidtcon + 8);
 }
 
@@ -1419,213 +1358,27 @@ static void s3c_fb_clear_win(struct s3c_fb *sfb, int win)
 	}
 }
 
-#ifdef CONFIG_OF
-static int s3c_fb_dt_parse_gpios(struct device *dev, struct s3c_fb *sfb,
-						bool request)
-{
-	int nr_gpios, idx, gpio, ret;
-
-	nr_gpios = sfb->pdata->win[0]->max_bpp + 4;
-	sfb->gpios = devm_kzalloc(dev, sizeof(int) * nr_gpios, GFP_KERNEL);
-	if (!sfb->gpios) {
-		dev_err(dev, "unable to allocate private data for gpio\n");
-		return -ENOMEM;
-	}
-
-	for (idx = 0; idx < nr_gpios; idx++) {
-		gpio = of_get_gpio(dev->of_node, idx);
-		if (!gpio_is_valid(gpio)) {
-			dev_err(dev, "invalid gpio[%d]: %d\n", idx, gpio);
-			return -EINVAL;
-		}
-
-		if (!request)
-			continue;
-
-		ret = gpio_request(gpio, "fimd");
-		if (ret) {
-			dev_err(dev, "gpio [%d] request failed\n", gpio);
-			goto gpio_free;
-		}
-		sfb->gpios[idx] = gpio;
-	}
-	return 0;
-
-gpio_free:
-	while (--idx >= 0)
-		gpio_free(sfb->gpios[idx]);
-	return ret;
-}
-
-static void s3c_fb_dt_free_gpios(struct s3c_fb *sfb)
-{
-	unsigned int idx, nr_gpio;
-
-	nr_gpio = sfb->pdata->win[0]->max_bpp + 4;
-	for (idx = 0; idx < nr_gpio; idx++)
-		gpio_free(sfb->gpios[idx]);
-}
-
-static struct s3c_fb_platdata *s3c_fb_dt_parse_pdata(struct device *dev)
-{
-	struct device_node *np = dev->of_node, *win_np;
-	struct device_node *disp_np;
-	struct s3c_fb_platdata *pd;
-	struct s3c_fb_pd_win *win;
-	u32 wnum = 0, data[4];
-
-	pd = devm_kzalloc(dev, sizeof(*pd), GFP_KERNEL);
-	if (!pd) {
-		dev_err(dev, "memory allocation for pdata failed\n");
-		return ERR_PTR(-ENOMEM);
-	}
-
-	pd->vtiming = devm_kzalloc(dev, sizeof(*pd->vtiming), GFP_KERNEL);
-	if (!pd->vtiming) {
-		dev_err(dev, "memory allocation for vtiming failed\n");
-		return ERR_PTR(-ENOMEM);
-	}
-
-	if (of_get_property(np, "samsung,fimd-vidout-rgb", NULL))
-		pd->vidcon0 |= VIDCON0_VIDOUT_RGB;
-	if (of_get_property(np, "samsung,fimd-vidout-tv", NULL))
-		pd->vidcon0 |= VIDCON0_VIDOUT_TV;
-	if (of_get_property(np, "samsung,fimd-inv-hsync", NULL))
-		pd->vidcon1 |= VIDCON1_INV_HSYNC;
-	if (of_get_property(np, "samsung,fimd-inv-vsync", NULL))
-		pd->vidcon1 |= VIDCON1_INV_VSYNC;
-	if (of_get_property(np, "samsung,fimd-inv-vclk", NULL))
-		pd->vidcon1 |= VIDCON1_INV_VCLK;
-	if (of_get_property(np, "samsung,fimd-inv-vden", NULL))
-		pd->vidcon1 |= VIDCON1_INV_VDEN;
-
-	disp_np = of_parse_phandle(np, "samsung,fimd-display", 0);
-	if (!disp_np) {
-		dev_err(dev, "unable to find display panel info\n");
-		return ERR_PTR(-EINVAL);
-	}
-
-	if (of_property_read_u32_array(disp_np, "lcd-htiming", data, 4)) {
-		dev_err(dev, "invalid horizontal timing\n");
-		return ERR_PTR(-EINVAL);
-	}
-	pd->vtiming->left_margin = data[0];
-	pd->vtiming->right_margin = data[1];
-	pd->vtiming->hsync_len = data[2];
-	pd->vtiming->xres = data[3];
-
-	if (of_property_read_u32_array(disp_np, "lcd-vtiming", data, 4)) {
-		dev_err(dev, "invalid vertical timing\n");
-		return ERR_PTR(-EINVAL);
-	}
-	pd->vtiming->upper_margin = data[0];
-	pd->vtiming->lower_margin = data[1];
-	pd->vtiming->vsync_len = data[2];
-	pd->vtiming->yres = data[3];
-
-	of_property_read_u32_array(np, "samsung,fimd-frame-rate",
-				&pd->vtiming->refresh, 1);
-
-	for_each_child_of_node(np, win_np) {
-		if (of_property_read_u32_array(win_np, "samsung,fimd-win-id",
-						&wnum, 1)) {
-			dev_err(dev, "window id not specified\n");
-			return ERR_PTR(-EINVAL);
-		}
-
-		win = devm_kzalloc(dev, sizeof(*win), GFP_KERNEL);
-		if (!win) {
-			dev_err(dev, "no memory for window[%d] data\n", wnum);
-			return ERR_PTR(-ENOMEM);
-		}
-		pd->win[wnum] = win;
-
-		if (of_property_read_u32_array(win_np, "samsung,fimd-win-bpp",
-						data, 2)) {
-			dev_err(dev, "invalid window bpp\n");
-			return ERR_PTR(-EINVAL);
-		}
-		win->default_bpp = data[0];
-		win->max_bpp = data[1];
-
-		if (of_property_read_u32_array(win_np, "samsung,fimd-win-res",
-						data, 2)) {
-			dev_info(dev, "window [%d] resolution not specified. "
-				"Using lcd resolution X[%d] and Y[%d]", wnum,
-				pd->vtiming->xres, pd->vtiming->yres);
-			win->xres = pd->vtiming->xres;
-			win->yres = pd->vtiming->yres;
-		} else {
-			win->xres = data[0];
-			win->yres = data[1];
-		}
-
-		if (!of_property_read_u32_array(win_np,
-				"samsung,fimd-win-virtres", data, 2)) {
-			win->virtual_x = data[0];
-			win->virtual_y = data[1];
-		}
-	}
-
-	return pd;
-}
-#else
-static int s3c_fb_dt_parse_gpios(struct device *dev, struct s3c_fb *sfb,
-						bool request)
-{
-	return 0;
-}
-
-static void s3c_fb_dt_free_gpios(struct s3c_fb *sfb)
-{
-}
-
-static struct s3c_fb_platdata *s3c_fb_dt_parse_pdata(struct device *dev)
-{
-	return NULL;
-}
-#endif /* CONFIG_OF */
-
-static const struct of_device_id s3c_fb_dt_match[];
-
-static inline struct s3c_fb_driverdata *s3c_fb_get_driver_data(
-			struct platform_device *pdev)
-{
-#ifdef CONFIG_OF
-	if (pdev->dev.of_node) {
-		const struct of_device_id *match;
-		match = of_match_node(s3c_fb_dt_match, pdev->dev.of_node);
-		return (struct s3c_fb_driverdata *)match->data;
-	}
-#endif
-	return (struct s3c_fb_driverdata *)
-			platform_get_device_id(pdev)->driver_data;
-}
-
 static int __devinit s3c_fb_probe(struct platform_device *pdev)
 {
+	const struct platform_device_id *platid;
 	struct s3c_fb_driverdata *fbdrv;
 	struct device *dev = &pdev->dev;
-	struct s3c_fb_platdata *pd = pdev->dev.platform_data;
+	struct s3c_fb_platdata *pd;
 	struct s3c_fb *sfb;
 	struct resource *res;
 	int win;
 	int ret = 0;
 	u32 reg;
 
-	fbdrv = s3c_fb_get_driver_data(pdev);
+	platid = platform_get_device_id(pdev);
+	fbdrv = (struct s3c_fb_driverdata *)platid->driver_data;
 
 	if (fbdrv->variant.nr_windows > S3C_FB_MAX_WIN) {
 		dev_err(dev, "too many windows, cannot attach\n");
 		return -EINVAL;
 	}
 
-	if (pdev->dev.of_node) {
-		pd = s3c_fb_dt_parse_pdata(&pdev->dev);
-		if (IS_ERR(pd))
-			return PTR_ERR(pd);
-	}
-
+	pd = pdev->dev.platform_data;
 	if (!pd) {
 		dev_err(dev, "no platform data specified\n");
 		return -EINVAL;
@@ -1645,35 +1398,28 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 
 	spin_lock_init(&sfb->slock);
 
-	sfb->bus_clk = clk_get(dev, "lcd");
+	sfb->bus_clk = devm_clk_get(dev, "lcd");
 	if (IS_ERR(sfb->bus_clk)) {
 		dev_err(dev, "failed to get bus clock\n");
-		ret = PTR_ERR(sfb->bus_clk);
-		goto err_sfb;
+		return PTR_ERR(sfb->bus_clk);
 	}
 
-	clk_enable(sfb->bus_clk);
+	clk_prepare_enable(sfb->bus_clk);
 
 	if (!sfb->variant.has_clksel) {
-		sfb->lcd_clk = clk_get(dev, "sclk_fimd");
+		sfb->lcd_clk = devm_clk_get(dev, "sclk_fimd");
 		if (IS_ERR(sfb->lcd_clk)) {
 			dev_err(dev, "failed to get lcd clock\n");
 			ret = PTR_ERR(sfb->lcd_clk);
 			goto err_bus_clk;
 		}
 
-		clk_enable(sfb->lcd_clk);
+		clk_prepare_enable(sfb->lcd_clk);
 	}
 
 	pm_runtime_enable(sfb->dev);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		dev_err(dev, "failed to find registers\n");
-		ret = -ENOENT;
-		goto err_lcd_clk;
-	}
-
 	sfb->regs = devm_request_and_ioremap(dev, res);
 	if (!sfb->regs) {
 		dev_err(dev, "failed to map registers\n");
@@ -1702,12 +1448,7 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 
 	/* setup gpio and output polarity controls */
 
-	if (dev->of_node) {
-		if (s3c_fb_dt_parse_gpios(dev, sfb, true))
-			goto err_lcd_clk;
-	} else {
-		pd->setup_gpio();
-	}
+	pd->setup_gpio();
 
 	writel(pd->vidcon1, sfb->regs + VIDCON1);
 
@@ -1757,22 +1498,17 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 	return 0;
 
 err_pm_runtime:
-	s3c_fb_dt_free_gpios(sfb);
 	pm_runtime_put_sync(sfb->dev);
 
 err_lcd_clk:
 	pm_runtime_disable(sfb->dev);
 
-	if (!sfb->variant.has_clksel) {
-		clk_disable(sfb->lcd_clk);
-		clk_put(sfb->lcd_clk);
-	}
+	if (!sfb->variant.has_clksel)
+		clk_disable_unprepare(sfb->lcd_clk);
 
 err_bus_clk:
-	clk_disable(sfb->bus_clk);
-	clk_put(sfb->bus_clk);
+	clk_disable_unprepare(sfb->bus_clk);
 
-err_sfb:
 	return ret;
 }
 
@@ -1794,17 +1530,13 @@ static int __devexit s3c_fb_remove(struct platform_device *pdev)
 		if (sfb->windows[win])
 			s3c_fb_release_win(sfb, sfb->windows[win]);
 
-	if (!sfb->variant.has_clksel) {
-		clk_disable(sfb->lcd_clk);
-		clk_put(sfb->lcd_clk);
-	}
+	if (!sfb->variant.has_clksel)
+		clk_disable_unprepare(sfb->lcd_clk);
 
-	clk_disable(sfb->bus_clk);
-	clk_put(sfb->bus_clk);
+	clk_disable_unprepare(sfb->bus_clk);
 
 	pm_runtime_put_sync(sfb->dev);
 	pm_runtime_disable(sfb->dev);
-	s3c_fb_dt_free_gpios(sfb);
 
 	return 0;
 }
@@ -1829,9 +1561,9 @@ static int s3c_fb_suspend(struct device *dev)
 	}
 
 	if (!sfb->variant.has_clksel)
-		clk_disable(sfb->lcd_clk);
+		clk_disable_unprepare(sfb->lcd_clk);
 
-	clk_disable(sfb->bus_clk);
+	clk_disable_unprepare(sfb->bus_clk);
 
 	pm_runtime_put_sync(sfb->dev);
 
@@ -1849,16 +1581,13 @@ static int s3c_fb_resume(struct device *dev)
 
 	pm_runtime_get_sync(sfb->dev);
 
-	clk_enable(sfb->bus_clk);
+	clk_prepare_enable(sfb->bus_clk);
 
 	if (!sfb->variant.has_clksel)
-		clk_enable(sfb->lcd_clk);
+		clk_prepare_enable(sfb->lcd_clk);
 
 	/* setup gpio and output polarity controls */
-	if (dev->of_node)
-		s3c_fb_dt_parse_gpios(dev, sfb, false);
-	else
-		pd->setup_gpio();
+	pd->setup_gpio();
 	writel(pd->vidcon1, sfb->regs + VIDCON1);
 
 	/* set video clock running at under-run */
@@ -1889,9 +1618,14 @@ static int s3c_fb_resume(struct device *dev)
 	s3c_fb_set_rgb_timing(sfb);
 
 	/* restore framebuffers */
-	win = sfb->windows[2];		/* Default window is 2 */
-	dev_dbg(&pdev->dev, "resuming window %d\n", win_no);
-	s3c_fb_set_par(win->fbinfo);
+	for (win_no = 0; win_no < S3C_FB_MAX_WIN; win_no++) {
+		win = sfb->windows[win_no];
+		if (!win)
+			continue;
+
+		dev_dbg(&pdev->dev, "resuming window %d\n", win_no);
+		s3c_fb_set_par(win->fbinfo);
+	}
 
 	pm_runtime_put_sync(sfb->dev);
 
@@ -1906,9 +1640,9 @@ static int s3c_fb_runtime_suspend(struct device *dev)
 	struct s3c_fb *sfb = platform_get_drvdata(pdev);
 
 	if (!sfb->variant.has_clksel)
-		clk_disable(sfb->lcd_clk);
+		clk_disable_unprepare(sfb->lcd_clk);
 
-	clk_disable(sfb->bus_clk);
+	clk_disable_unprepare(sfb->bus_clk);
 
 	return 0;
 }
@@ -1919,16 +1653,13 @@ static int s3c_fb_runtime_resume(struct device *dev)
 	struct s3c_fb *sfb = platform_get_drvdata(pdev);
 	struct s3c_fb_platdata *pd = sfb->pdata;
 
-	clk_enable(sfb->bus_clk);
+	clk_prepare_enable(sfb->bus_clk);
 
 	if (!sfb->variant.has_clksel)
-		clk_enable(sfb->lcd_clk);
+		clk_prepare_enable(sfb->lcd_clk);
 
 	/* setup gpio and output polarity controls */
-	if (dev->of_node)
-		s3c_fb_dt_parse_gpios(dev, sfb, false);
-	else
-		pd->setup_gpio();
+	pd->setup_gpio();
 	writel(pd->vidcon1, sfb->regs + VIDCON1);
 
 	return 0;
@@ -2298,15 +2029,6 @@ static struct platform_device_id s3c_fb_driver_ids[] = {
 };
 MODULE_DEVICE_TABLE(platform, s3c_fb_driver_ids);
 
-#ifdef CONFIG_OF
-static const struct of_device_id s3c_fb_dt_match[] = {
-	{ .compatible = "samsung,exynos4210-fimd",
-		.data = (void *)&s3c_fb_data_exynos4 },
-	{},
-};
-MODULE_DEVICE_TABLE(of, s3c_fb_dt_match);
-#endif
-
 static const struct dev_pm_ops s3cfb_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(s3c_fb_suspend, s3c_fb_resume)
 	SET_RUNTIME_PM_OPS(s3c_fb_runtime_suspend, s3c_fb_runtime_resume,
@@ -2321,7 +2043,6 @@ static struct platform_driver s3c_fb_driver = {
 		.name	= "s3c-fb",
 		.owner	= THIS_MODULE,
 		.pm	= &s3cfb_pm_ops,
-		.of_match_table	= of_match_ptr(s3c_fb_dt_match),
 	},
 };
 

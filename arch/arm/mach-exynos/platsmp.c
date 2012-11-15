@@ -164,10 +164,14 @@ static int __cpuinit exynos_boot_secondary(unsigned int cpu, struct task_struct 
 		 * secondary CPU branches to this address.
 		 */
 		__raw_writel(virt_to_phys(exynos4_secondary_startup),
+#if 1
 				boot_base);
 
 		gic_raise_softirq(cpumask_of(cpu), 1);
-
+#else
+			CPU1_BOOT_REG);
+		gic_raise_softirq(cpumask_of(cpu), 0);
+#endif
 		if (pen_release == -1)
 			break;
 
