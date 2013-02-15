@@ -259,6 +259,7 @@ config USB3503_PORTS_SELF_POWER_DISABLED
 
 config USB_EZUSB_FX2
 	tristate "Functions for loading firmware on EZUSB chips"
+	depends on USB
 	help
 	  Say Y here if you need EZUSB device support.
 	  (Cypress FX/FX2/FX2LP microcontrollers)

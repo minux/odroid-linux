@@ -601,7 +601,7 @@ static struct clk exynos4_init_clocks_off[] = {
 		.enable		= exynos4_clk_ip_fsys_ctrl,
 		.ctrlbit	= (1 << 8),
 	}, {
-		.name		= "dwmmc",
+		.name		= "biu",
 		.parent		= &exynos4_clk_aclk_133.clk,
 		.enable		= exynos4_clk_ip_fsys_ctrl,
 		.ctrlbit	= (1 << 9),
@@ -647,6 +647,10 @@ static struct clk exynos4_init_clocks_off[] = {
 		.name		= "adc",
 		.enable		= exynos4_clk_ip_peril_ctrl,
 		.ctrlbit	= (1 << 15),
+	}, {
+		.name		= "tmu_apbif",
+		.enable		= exynos4_clk_ip_perir_ctrl,
+		.ctrlbit	= (1 << 17),
 	}, {
 		.name		= "keypad",
 		.enable		= exynos4_clk_ip_perir_ctrl,
@@ -1258,7 +1262,15 @@ static struct clksrc_clk exynos4_clksrcs[] = {
 		.sources = &exynos4_clkset_mout_mfc,
 		.reg_src = { .reg = EXYNOS4_CLKSRC_MFC, .shift = 8, .size = 1 },
 		.reg_div = { .reg = EXYNOS4_CLKDIV_MFC, .shift = 0, .size = 4 },
-	},
+	}, {
+		.clk	= {
+			.name		= "ciu",
+			.parent		= &exynos4_clk_dout_mmc4.clk,
+			.enable		= exynos4_clksrc_mask_fsys_ctrl,
+			.ctrlbit	= (1 << 16),
+		},
+		.reg_div = { .reg = EXYNOS4_CLKDIV_FSYS3, .shift = 8, .size = 8 },
+	}
 };
 
 static struct clksrc_clk exynos4_clk_sclk_uart0 = {
