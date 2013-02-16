@@ -40,6 +40,7 @@ static void xt_rateest_hash_insert(struct xt_rateest *est)
 	hlist_add_head(&est->list, &rateest_hash[h]);
 }
 
+#if 0
 struct xt_rateest *xt_rateest_lookup(const char *name)
 {
 	struct xt_rateest *est;
@@ -59,12 +60,14 @@ struct xt_rateest *xt_rateest_lookup(const char *name)
 	return NULL;
 }
 EXPORT_SYMBOL_GPL(xt_rateest_lookup);
+#endif
 
 static void xt_rateest_free_rcu(struct rcu_head *head)
 {
 	kfree(container_of(head, struct xt_rateest, rcu));
 }
 
+#if 0
 void xt_rateest_put(struct xt_rateest *est)
 {
 	mutex_lock(&xt_rateest_mutex);
@@ -80,6 +83,7 @@ void xt_rateest_put(struct xt_rateest *est)
 	mutex_unlock(&xt_rateest_mutex);
 }
 EXPORT_SYMBOL_GPL(xt_rateest_put);
+#endif
 
 static unsigned int
 xt_rateest_tg(struct sk_buff *skb, const struct xt_action_param *par)
