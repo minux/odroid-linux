@@ -740,7 +740,7 @@ void mxr_reg_local_path_set(struct mxr_device *mdev, int mxr0_gsc, int mxr1_gsc,
 {
 	u32 val = 0;
 	int mxr0_local = mdev->sub_mxr[MXR_SUB_MIXER0].local;
-	int mxr1_local = mdev->sub_mxr[MXR_SUB_MIXER1].local;
+	int mxr1_local = MXR_MAX_SUB_MIXERS >= 2 ? mdev->sub_mxr[MXR_SUB_MIXER1].local : 0;
 
 	if (mxr0_local && !mxr1_local) { /* 1-path : sub-mixer0 */
 		val  = MXR_TVOUT_CFG_ONE_PATH;
