@@ -88,6 +88,17 @@ const	char *filepath = "/etc/smsc95xx_mac_addr";
  */
 int smsc95xx_read_mac_addr(unsigned char *mac)
 {
+#ifndef __WONT_DEFINIE_MINUX__
+	mac[0] = 0x7E;
+	mac[1] = 0xD2;
+	mac[2] = 0xE0;
+	mac[3] = 0xBF;
+	mac[4] = 0x9D;
+	mac[5] = 0xBF;
+    printk("[%s] mac addr. is %02X:%02X:%02X:%02X:%02X:%02X\n", __func__, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    return  0;
+#else
+#error "This is compiled into the kernel, so this path shouldn't be exectued!"
     struct file *fp      = NULL;
 
     char macbuffer[20]   = {0};
@@ -141,6 +152,7 @@ int smsc95xx_read_mac_addr(unsigned char *mac)
     if (fp)     filp_close(fp, NULL);
 
     return  0;
+#endif
 }
 #endif  // #if defined(CONFIG_MACH_ODROID_4X12)
 //----------------------------------------------------------------------
