@@ -424,7 +424,7 @@ static struct regulator_init_data max77686_ldo10_data = {
 //-----------------------------------------------------------------------------------
 // LDO11 : VDD18_ABB1 (1.8V)
 //-----------------------------------------------------------------------------------
-static struct regulator_init_data __initdata max77686_ldo11_data = {
+static struct regulator_init_data max77686_ldo11_data = {
 	.constraints	= {
 		.name		= "LDO11 VDD18_ABB1_1V8",
 		.min_uV		= 1800000,
