@@ -88,71 +88,67 @@ const	char *filepath = "/etc/smsc95xx_mac_addr";
  */
 int smsc95xx_read_mac_addr(unsigned char *mac)
 {
-#ifndef __WONT_DEFINIE_MINUX__
-	mac[0] = 0x7E;
-	mac[1] = 0xD2;
-	mac[2] = 0xE0;
-	mac[3] = 0xBF;
-	mac[4] = 0x9D;
-	mac[5] = 0xBF;
-    printk("[%s] mac addr. is %02X:%02X:%02X:%02X:%02X:%02X\n", __func__, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    return  0;
-#else
-#error "This is compiled into the kernel, so this path shouldn't be exectued!"
     struct file *fp      = NULL;
-
-    char macbuffer[20]   = {0};
     mm_segment_t oldfs   = {0};
     char randommac[6]    = {0};
 
     int ret = 0;
 
-    //MAC address copied from nv
-    fp = filp_open(filepath, O_RDONLY, 0);
+    char macbuffer[20]   =
+#ifdef CONFIG_USB_NET_SMSC95XX_MAC
+	  CONFIG_USB_NET_SMSC95XX_MAC;
+	macbuffer[sizeof(macbuffer)-1] = '\0'; // just in case
+#else
+	  {0};
+#endif
 
-    if (IS_ERR(fp)) {
-        fp = filp_open(filepath, O_RDWR | O_CREAT, 0666);
+	if (strlen(macbuffer) != 18) {
+		//MAC address copied from nv
+		fp = filp_open(filepath, O_RDONLY, 0);
 
-        if (IS_ERR(fp)) {
-            printk("%s : Can't file(%s) create!!\n", __func__, filepath);
-            return  -1;
-        }
+		if (IS_ERR(fp)) {
+			fp = filp_open(filepath, O_RDWR | O_CREAT, 0666);
 
-        oldfs = get_fs();
-        set_fs(get_ds());
+			if (IS_ERR(fp)) {
+				printk("%s : Can't file(%s) create!!\n", __func__, filepath);
+				return  -1;
+			}
 
-        /* Generating the Random Bytes for 3 last octects of the MAC address */
-        get_random_bytes(randommac, 6);
+			oldfs = get_fs();
+			set_fs(get_ds());
 
-        randommac[0] &= 0xfe;	/* clear multicast bit */
-        randommac[0] |= 0x02;	/* set local assignment bit (IEEE802) */
-        
-        memset(macbuffer, 0x00, sizeof(macbuffer));
-        sprintf(macbuffer,"%02X:%02X:%02X:%02X:%02X:%02X\n",
-                randommac[0],randommac[1],randommac[2],randommac[3],randommac[4],randommac[5]);
-        printk("[%s] The Random Generated MAC ID : %s\n", __func__, macbuffer);
+			/* Generating the Random Bytes for 3 last octects of the MAC address */
+			get_random_bytes(randommac, 6);
 
-        if(fp->f_mode & FMODE_WRITE) {                  
-            ret = fp->f_op->write(fp, (const char *)macbuffer, sizeof(macbuffer), &fp->f_pos);
+			randommac[0] &= 0xfe;	/* clear multicast bit */
+			randommac[0] |= 0x02;	/* set local assignment bit (IEEE802) */
+			
+			memset(macbuffer, 0x00, sizeof(macbuffer));
+			sprintf(macbuffer,"%02X:%02X:%02X:%02X:%02X:%02X\n",
+					randommac[0],randommac[1],randommac[2],randommac[3],randommac[4],randommac[5]);
+			printk("[%s] The Random Generated MAC ID : %s\n", __func__, macbuffer);
 
-            if(ret < 0)
-                printk("[%s] Failed to write into File: %s\n", __func__, filepath);
-        }
-        set_fs(oldfs);
-    }
+			if(fp->f_mode & FMODE_WRITE) {                  
+				ret = fp->f_op->write(fp, (const char *)macbuffer, sizeof(macbuffer), &fp->f_pos);
 
-    memset(macbuffer, 0x00, sizeof(macbuffer));
+				if(ret < 0)
+					printk("[%s] Failed to write into File: %s\n", __func__, filepath);
+			}
+			set_fs(oldfs);
+		}
 
-    if((ret = kernel_read(fp, 0, macbuffer, 18)) < 0)   return  -1;      
+		memset(macbuffer, 0x00, sizeof(macbuffer));
 
-    sscanf(macbuffer, "%02X:%02X:%02X:%02X:%02X:%02X", &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]);
+		if((ret = kernel_read(fp, 0, macbuffer, 18)) < 0)   return  -1;      
+	}
+
+    sscanf(macbuffer, "%02hhX:%02hhX:%02hhX:%02hhX:%02hhX:%02hhX", &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]);
 
     printk("[%s] Mac address = %02X:%02X:%02X:%02X:%02X:%02X\n", __func__, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
     if (fp)     filp_close(fp, NULL);
 
     return  0;
-#endif
 }
 #endif  // #if defined(CONFIG_MACH_ODROID_4X12)
 //----------------------------------------------------------------------

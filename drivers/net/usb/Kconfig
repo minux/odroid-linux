@@ -239,6 +239,16 @@ config USB_NET_SMSC95XX
 	  This option adds support for SMSC LAN95XX based USB 2.0
 	  10/100 Ethernet adapters.
 
+if USB_NET_SMSC95XX = y
+config USB_NET_SMSC95XX_MAC
+	string "SMSC95XX MAC address (format: %02X:%02X:%02X:%02X:%02X:%02X)"
+	help
+	  This option sets MAC address for SMS LAN95XX based USB 2.0
+	  10/100 Ethernet adapters if it doesn't have EEPROM.
+	  If unsure, please leave it blank.
+	  If set, it should follow the format closely (i.e. 18 chars).
+endif
+
 config USB_NET_GL620A
 	tristate "GeneSys GL620USB-A based cables"
 	depends on USB_USBNET
