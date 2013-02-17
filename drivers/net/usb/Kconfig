@@ -246,7 +246,7 @@ config USB_NET_SMSC95XX_MAC
 	  This option sets MAC address for SMS LAN95XX based USB 2.0
 	  10/100 Ethernet adapters if it doesn't have EEPROM.
 	  If unsure, please leave it blank.
-	  If set, it should follow the format closely (i.e. 18 chars).
+	  If set, it should follow the format closely (i.e. 17 chars).
 endif
 
 config USB_NET_GL620A

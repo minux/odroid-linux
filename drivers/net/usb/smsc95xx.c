@@ -102,7 +102,9 @@ int smsc95xx_read_mac_addr(unsigned char *mac)
 	  {0};
 #endif
 
-	if (strlen(macbuffer) != 18) {
+#define MAC_FORMAT "%02hhX:%02hhX:%02hhX:%02hhX:%02hhX:%02hhX"
+
+	if (sscanf(macbuffer, MAC_FORMAT, &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]) != 6) {
 		//MAC address copied from nv
 		fp = filp_open(filepath, O_RDONLY, 0);
 
@@ -124,7 +126,7 @@ int smsc95xx_read_mac_addr(unsigned char *mac)
 			randommac[0] |= 0x02;	/* set local assignment bit (IEEE802) */
 			
 			memset(macbuffer, 0x00, sizeof(macbuffer));
-			sprintf(macbuffer,"%02X:%02X:%02X:%02X:%02X:%02X\n",
+			sprintf(macbuffer, MAC_FORMAT,
 					randommac[0],randommac[1],randommac[2],randommac[3],randommac[4],randommac[5]);
 			printk("[%s] The Random Generated MAC ID : %s\n", __func__, macbuffer);
 
@@ -137,18 +139,18 @@ int smsc95xx_read_mac_addr(unsigned char *mac)
 			set_fs(oldfs);
 		}
 
-		memset(macbuffer, 0x00, sizeof(macbuffer));
+		memset(macbuffer, 0, sizeof(macbuffer));
 
-		if((ret = kernel_read(fp, 0, macbuffer, 18)) < 0)   return  -1;      
+		if((ret = kernel_read(fp, 0, macbuffer, 18)) < 0)
+			return  -1;
+		sscanf(macbuffer, MAC_FORMAT, &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]);
+		if (fp)
+			filp_close(fp, NULL);
 	}
 
-    sscanf(macbuffer, "%02hhX:%02hhX:%02hhX:%02hhX:%02hhX:%02hhX", &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]);
-
-    printk("[%s] Mac address = %02X:%02X:%02X:%02X:%02X:%02X\n", __func__, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-
-    if (fp)     filp_close(fp, NULL);
-
+    printk("[%s] Mac address = " MAC_FORMAT "\n", __func__, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     return  0;
+#undef MAC_FORMAT
 }
 #endif  // #if defined(CONFIG_MACH_ODROID_4X12)
 //----------------------------------------------------------------------
